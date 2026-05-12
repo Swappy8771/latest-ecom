@@ -1,4 +1,5 @@
 const swaggerJSDoc = require('swagger-jsdoc');
+const path = require('path');
 
 const options = {
   definition: {
@@ -27,7 +28,11 @@ const options = {
       bearerAuth: [],
     }],
   },
-  apis: ['./routes/*.js', './models/*.js'], // points to files with Swagger comments
+  apis: [
+    path.join(__dirname, '../Routes/*.js'),
+    path.join(__dirname, '../Model/*.js'),
+    path.join(__dirname, '../Controllers/*.js'),
+  ],
 };
 
 const swaggerSpec = swaggerJSDoc(options);
