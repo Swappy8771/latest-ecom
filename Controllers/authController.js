@@ -2,6 +2,7 @@ const User = require('../Model/User');
 const asyncHandler = require('../utils/asyncHandler');
 const crypto = require('crypto');
 const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/tokens');
+const { verifyToken, createClerkClient } = require('@clerk/backend');
 
 function toPublicUser(user) {
   return {
@@ -39,6 +40,7 @@ const register = asyncHandler(async (req, res) => {
     phone,
     password,
     role,
+    authProvider: 'LOCAL',
     isVerified: false,
     status: role === 'SELLER' ? 'PENDING' : 'ACTIVE',
     verificationStatus: role === 'SELLER' ? 'PENDING' : 'NONE',
@@ -202,4 +204,85 @@ const me = asyncHandler(async (req, res) => {
   return res.status(200).json({ user: toPublicUser(req.user) });
 });
 
-module.exports = { register, login, verifyOtp, refreshToken, logout, forgotPassword, resetPassword, me };
+const clerkAuth = asyncHandler(async (req, res) => {
+  const clerkToken = (req.body?.clerkToken || '').toString();
+  if (!clerkToken) return res.status(400).json({ message: 'clerkToken is required' });
+
+  const secretKey = (process.env.CLERK_SECRET_KEY || '').trim();
+  const jwtKey = (process.env.CLERK_JWT_KEY || '').trim();
+  if (!secretKey && !jwtKey) {
+    return res.status(500).json({ message: 'Clerk backend is not configured (missing CLERK_SECRET_KEY or CLERK_JWT_KEY)' });
+  }
+
+  // Verify Clerk session token
+  const verified = await verifyToken(clerkToken, {
+    ...(secretKey ? { secretKey } : {}),
+    ...(jwtKey ? { jwtKey } : {}),
+    authorizedParties: (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+  });
+
+  const clerkUserId = verified.sub;
+  if (!clerkUserId) return res.status(401).json({ message: 'Invalid Clerk token' });
+
+  // Fetch user profile from Clerk to get verified email
+  let email = '';
+  let name = '';
+  try {
+    const clerk = createClerkClient({ secretKey: secretKey || undefined });
+    const clerkUser = await clerk.users.getUser(clerkUserId);
+    email = clerkUser.emailAddresses?.[0]?.emailAddress || '';
+    name =
+      clerkUser.firstName ||
+      clerkUser.lastName ||
+      clerkUser.username ||
+      clerkUser.emailAddresses?.[0]?.emailAddress?.split('@')?.[0] ||
+      'User';
+  } catch (e) {
+    // If Clerk API can't be reached, we still can't safely create user without email.
+    return res.status(502).json({ message: 'Could not fetch Clerk user profile' });
+  }
+
+  if (!email) return res.status(400).json({ message: 'Clerk user has no email address' });
+
+  // Map Clerk user -> our user
+  let user = await User.findOne({ $or: [{ clerkUserId }, { email }] });
+  if (!user) {
+    user = await User.create({
+      name,
+      email,
+      role: 'USER',
+      authProvider: 'CLERK',
+      clerkUserId,
+      isVerified: true,
+      status: 'ACTIVE',
+      verificationStatus: 'NONE',
+      isVerifiedSeller: false,
+    });
+  } else {
+    // Keep mapping stable
+    if (!user.clerkUserId) user.clerkUserId = clerkUserId;
+    if (user.authProvider !== 'CLERK') user.authProvider = 'CLERK';
+    if (!user.isVerified) user.isVerified = true;
+    await user.save();
+  }
+
+  user.lastLogin = new Date();
+
+  const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role, email: user.email });
+  const refreshTokenValue = signRefreshToken({ sub: user._id.toString(), role: user.role, email: user.email });
+  const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  user.setRefreshToken(refreshTokenValue, refreshExpiresAt);
+  await user.save();
+
+  return res.status(200).json({
+    message: 'Logged in with Google',
+    accessToken,
+    refreshToken: refreshTokenValue,
+    user: toPublicUser(user),
+  });
+});
+
+module.exports = { register, login, verifyOtp, refreshToken, logout, forgotPassword, resetPassword, me, clerkAuth };

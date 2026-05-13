@@ -13,6 +13,7 @@ async function main() {
   const password = getEnv('ADMIN_PASSWORD');
   const name = getEnv('ADMIN_NAME') || 'Admin';
   const confirm = getEnv('ADMIN_SEED_CONFIRM'); // require YES in production
+  const shouldUpdate = process.argv.includes('--update') || getEnv('ADMIN_SEED_MODE') === 'update';
 
   if (!mongoUri) throw new Error('Missing MONGO_URI');
   if (!email) throw new Error('Missing ADMIN_EMAIL');
@@ -26,7 +27,21 @@ async function main() {
 
   const existing = await User.findOne({ email });
   if (existing) {
-    console.log(`Admin already exists: ${existing.email} (${existing._id})`);
+    if (!shouldUpdate) {
+      console.log(`Admin already exists: ${existing.email} (${existing._id})`);
+      return;
+    }
+
+    existing.name = name;
+    existing.role = 'ADMIN';
+    existing.isVerified = true;
+    existing.status = 'ACTIVE';
+    existing.verificationStatus = 'NONE';
+    existing.isVerifiedSeller = false;
+    existing.password = password; // will be hashed by pre-save hook
+    await existing.save();
+
+    console.log(`Updated admin credentials: ${existing.email} (${existing._id})`);
     return;
   }
 
@@ -50,4 +65,3 @@ main()
     console.error(err.message || err);
     process.exit(1);
   });
-

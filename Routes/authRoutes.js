@@ -8,6 +8,7 @@ const {
   forgotPassword,
   resetPassword,
   me,
+  clerkAuth,
 } = require('../Controllers/authController');
 const {
   registerValidator,
@@ -16,6 +17,7 @@ const {
   refreshValidator,
   forgotPasswordValidator,
   resetPasswordValidator,
+  clerkAuthValidator,
 } = require('../validators/authValidators');
 const validate = require('../Middlewares/validate');
 const { protect } = require('../Middlewares/auth');
@@ -259,5 +261,27 @@ router.post('/reset-password', resetPasswordValidator, validate, resetPassword);
  *         description: Not authorized
  */
 router.get('/me', protect, me);
+
+/**
+ * @swagger
+ * /api/auth/clerk:
+ *   post:
+ *     summary: Exchange Clerk session token for backend access/refresh tokens
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [clerkToken]
+ *             properties:
+ *               clerkToken: { type: string }
+ *     responses:
+ *       200:
+ *         description: Logged in
+ */
+router.post('/clerk', clerkAuthValidator, validate, clerkAuth);
 
 module.exports = router;

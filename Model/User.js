@@ -18,6 +18,17 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    authProvider: {
+      type: String,
+      enum: ['LOCAL', 'CLERK'],
+      default: 'LOCAL',
+      index: true,
+    },
+    clerkUserId: {
+      type: String,
+      default: '',
+      index: true,
+    },
     phone: {
       type: String,
       default: '',
@@ -30,7 +41,9 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      required: function passwordRequired() {
+        return this.authProvider === 'LOCAL';
+      },
       minlength: 6,
       select: false,
     },
@@ -85,6 +98,7 @@ const userSchema = new mongoose.Schema(
 
 userSchema.pre('save', async function passwordHash(next) {
   if (!this.isModified('password')) return next();
+  if (!this.password) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();

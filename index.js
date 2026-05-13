@@ -18,6 +18,7 @@ const paymentRoutes = require('./Routes/paymentRoutes');
 const uploadRoutes = require('./Routes/uploadRoutes');
 const addressRoutes = require('./Routes/addressRoutes');
 const catalogRoutes = require('./Routes/catalogRoutes');
+const profileRoutes = require('./Routes/profileRoutes');
 
 const app = express();
 
@@ -87,6 +88,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/addresses', addressRoutes);
 app.use('/api/catalog', catalogRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Health Check
 app.get('/', (req, res) => {

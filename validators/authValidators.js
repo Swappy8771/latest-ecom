@@ -51,4 +51,5 @@ module.exports = {
   refreshValidator,
   forgotPasswordValidator,
   resetPasswordValidator,
+  clerkAuthValidator: [body('clerkToken').notEmpty().withMessage('clerkToken is required')],
 };
